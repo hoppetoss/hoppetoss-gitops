@@ -26,31 +26,34 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
 
       - name: Ensure environment directory exists
-        run: mkdir -p environments/minikube
+        run: |
+          mkdir -p environments/minikube
 
       - name: Create file if missing
         run: |
           FILE="environments/minikube/${{ inputs.service_name }}.yaml"
+          SERVICE="${{ inputs.service_name }}"
+          IMAGE="${{ inputs.image_tag }}"
 
           if [ ! -f "$FILE" ]; then
             echo "File $FILE does not exist — creating a new ArgoCD application file."
 
-cat <<EOF > "$FILE"
+            cat <<EOF > "$FILE"
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: ${{ inputs.service_name }}
+  name: ${SERVICE}
   namespace: argocd
 spec:
   project: default
   source:
-    repoURL: https://github.com/hoppetoss/${{ inputs.service_name }}.git
+    repoURL: https://github.com/hoppetoss/${SERVICE}.git
     targetRevision: main
     path: helm/fastapi-service
     helm:
       parameters:
         - name: image.tag
-          value: "${{ inputs.image_tag }}"
+          value: "${IMAGE}"
   destination:
     server: https://kubernetes.default.svc
     namespace: default
@@ -59,7 +62,6 @@ spec:
       prune: true
       selfHeal: true
 EOF
-
           else
             echo "File exists — will update the image tag."
           fi
@@ -67,14 +69,14 @@ EOF
       - name: Update image tag in existing file
         run: |
           FILE="environments/minikube/${{ inputs.service_name }}.yaml"
+          IMAGE="${{ inputs.image_tag }}"
 
           echo "Updating image tag in $FILE ..."
-          
+
           yq -i '
             .spec.source.helm.parameters |= (
-              map(select(.name == "image.tag").value = "${{ inputs.image_tag }}")
-              +
-              (if any(.name == "image.tag") then [] else [{"name": "image.tag", "value": "${{ inputs.image_tag }}"}] end)
+              map(select(.name == "image.tag").value = env.IMAGE) +
+              (if any(.name == "image.tag") then [] else [{"name": "image.tag", "value": env.IMAGE}] end)
             )
           ' "$FILE"
 
