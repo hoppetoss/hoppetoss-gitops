@@ -73,12 +73,16 @@ EOF
 
           echo "Updating image tag in $FILE ..."
 
-          yq -i '
+          # store yq program in a bash variable to avoid YAML parsing issues
+          YQ_SCRIPT='
             .spec.source.helm.parameters |= (
-              map(select(.name == "image.tag").value = env.IMAGE) +
+              map(select(.name == "image.tag").value = env.IMAGE)
+              +
               (if any(.name == "image.tag") then [] else [{"name": "image.tag", "value": env.IMAGE}] end)
             )
-          ' "$FILE"
+          '
+
+          IMAGE="$IMAGE" yq -i "$YQ_SCRIPT" "$FILE"
 
       - name: Commit and push changes
         run: |
