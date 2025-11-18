@@ -26,63 +26,45 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
 
       - name: Ensure environment directory exists
-        run: |
-          mkdir -p environments/minikube
+        run: mkdir -p environments/minikube
 
-      - name: Create file if missing
+      - name: Create or update ArgoCD YAML
         run: |
           FILE="environments/minikube/${{ inputs.service_name }}.yaml"
           SERVICE="${{ inputs.service_name }}"
           IMAGE="${{ inputs.image_tag }}"
 
           if [ ! -f "$FILE" ]; then
-            echo "File $FILE does not exist — creating a new ArgoCD application file."
-
-            cat <<EOF > "$FILE"
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: ${SERVICE}
-  namespace: argocd
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/hoppetoss/${SERVICE}.git
-    targetRevision: main
-    path: helm/fastapi-service
-    helm:
-      parameters:
-        - name: image.tag
-          value: "${IMAGE}"
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: default
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-EOF
+            echo "Creating new ArgoCD application file: $FILE"
+            yq -n \
+              --arg name "$SERVICE" \
+              --arg repo "https://github.com/hoppetoss/$SERVICE.git" \
+              --arg image "$IMAGE" \
+              '{
+                apiVersion: "argoproj.io/v1alpha1",
+                kind: "Application",
+                metadata: {name: $name, namespace: "argocd"},
+                spec: {
+                  project: "default",
+                  source: {
+                    repoURL: $repo,
+                    targetRevision: "main",
+                    path: "helm/fastapi-service",
+                    helm: {parameters: [{name: "image.tag", value: $image}]}
+                  },
+                  destination: {server: "https://kubernetes.default.svc", namespace: "default"},
+                  syncPolicy: {automated: {prune: true, selfHeal: true}}
+                }
+              }' > "$FILE"
           else
-            echo "File exists — will update the image tag."
+            echo "File exists — updating image tag in $FILE"
+            yq -i \
+              --arg image "$IMAGE" \
+              '.spec.source.helm.parameters |=
+                 (map(select(.name == "image.tag").value = $image)
+                 + (if any(.name == "image.tag") then [] else [{"name":"image.tag","value":$image}] end))' \
+              "$FILE"
           fi
-
-      - name: Update image tag in existing file
-        run: |
-          FILE="environments/minikube/${{ inputs.service_name }}.yaml"
-          IMAGE="${{ inputs.image_tag }}"
-
-          echo "Updating image tag in $FILE ..."
-
-          # store yq program in a bash variable to avoid YAML parsing issues
-          YQ_SCRIPT='
-            .spec.source.helm.parameters |= (
-              map(select(.name == "image.tag").value = env.IMAGE)
-              +
-              (if any(.name == "image.tag") then [] else [{"name": "image.tag", "value": env.IMAGE}] end)
-            )
-          '
-
-          IMAGE="$IMAGE" yq -i "$YQ_SCRIPT" "$FILE"
 
       - name: Commit and push changes
         run: |
