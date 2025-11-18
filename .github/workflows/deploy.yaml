@@ -1,0 +1,37 @@
+name: Deploy via Port
+
+on:
+  workflow_dispatch:
+    inputs:
+      service_name:
+        description: "Service name"
+        required: true
+        type: string
+      image_tag:
+        description: "Image tag to deploy"
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitOps repo
+        uses: actions/checkout@v4
+
+      - name: Update image tag in Helm values
+        run: |
+          FILE="environments/minikube/${{ inputs.service_name }}.yaml"
+
+          echo "Updating $FILE ..."
+          
+          # Replace tag in Helm values
+          yq -i ".spec.source.helm.parameters[0].value = \"${{ inputs.image_tag }}\"" $FILE
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.email "platform-bot@hoppetoss.com"
+          git config --global user.name "Hoppetoss Platform Bot"
+          git add .
+          git commit -m "Deploy ${{ inputs.service_name }}:${{ inputs.image_tag }}"
+          git push
