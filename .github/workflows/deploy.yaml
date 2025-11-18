@@ -35,7 +35,7 @@ jobs:
           if [ ! -f "$FILE" ]; then
             echo "File $FILE does not exist — creating a new ArgoCD application file."
 
-            cat <<EOF > "$FILE"
+cat <<EOF > "$FILE"
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -59,6 +59,7 @@ spec:
       prune: true
       selfHeal: true
 EOF
+
           else
             echo "File exists — will update the image tag."
           fi
@@ -69,7 +70,6 @@ EOF
 
           echo "Updating image tag in $FILE ..."
           
-          # update or insert parameter
           yq -i '
             .spec.source.helm.parameters |= (
               map(select(.name == "image.tag").value = "${{ inputs.image_tag }}")
